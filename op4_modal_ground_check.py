@@ -35,8 +35,8 @@ from scipy.linalg import eigh
 # ============================================================================
 # USER SETTINGS
 # ============================================================================
-OP4_FILE = r"C:\Users\marco\Desktop\KINETIK\FEM\check\KINETIK_RISE_RFEM_OP4_corrected.op4"
-ASM_FILE = r"C:\Users\marco\Desktop\KINETIK\FEM\check\KINETIK_RISE_8J_RA_RFEM.asm"
+OP4_FILE = "KINETIK_RISE_RFEM_OP4.op4"
+ASM_FILE = "KINETIK_RISE_8J_RA_RFEM.asm"
 
 K_NAME = "KAA"
 M_NAME = "MAA"
@@ -54,7 +54,7 @@ RUN_CLAMPED = True
 CLAMP_GRIDS = []                         # e.g. list(range(10000001, 10000129))
 # ... OR read the dependent grids of an RBE2 from the MSC deck
 #     (works also if the RBE2 lines are commented out with '$')
-CLAMP_FROM_DAT = r"C:\Users\marco\Desktop\KINETIK\FEM\check\KINETIK_RISE_8J_RFEM_freefree.dat"
+CLAMP_FROM_DAT = "KINETIK_RISE_8J_RFEM.dat"
 CLAMP_RBE2_EID = 9999999
 
 OUT_PREFIX = "op4_modal_check"           # files written next to this script
@@ -335,12 +335,23 @@ def main():
         if len(f) >= 7:
             fr = np.abs(f[:6]).max()
             chi = fr / f[6]
-            print(f'\n  Max |rigid-mode freq| = {fr:.4E} Hz   '
-                  f'({"OK" if fr <= 5e-3 else "EXCEEDS"} 5e-3 Hz, 5.7a)')
+            print(f'\n  [dense solver]  max |rigid-mode freq| = {fr:.4E} Hz, chi = {chi:.4E}')
+            print('  (the dense solver resolves near-zero eigenvalues only to ~eps*||K||/min(M);'
+                  ' identical rigid values = solver floor, not the model)')
+            # Rayleigh-Ritz on the exact rigid-body subspace: accurate rigid eigenvalues
+            MRg = Rg.T @ M @ Rg
+            lam_rr = eigh(0.5 * (KR + KR.T), MRg, eigvals_only=True)
+            f_rr = np.sign(lam_rr) * np.sqrt(np.abs(lam_rr)) / (2 * math.pi)
+            fr2 = np.abs(f_rr).max()
+            chi2 = fr2 / f[6]
+            print('  [Rayleigh-Ritz on R]  rigid eigenvalues:', np.array2string(lam_rr, precision=3))
+            print(f'  Max |rigid-mode freq| = {fr2:.4E} Hz   '
+                  f'({"OK" if fr2 <= 5e-3 else "EXCEEDS"} 5e-3 Hz, 5.7a)')
             print(f'  First elastic mode    = {f[6]:.4E} Hz')
-            print(f'  chi = {chi:.4E}   ({"OK" if chi <= 1e-4 else "EXCEEDS"} 1e-4, 5.7b)')
-            if (lam[:6] < 0).any():
-                print(f'  NOTE: {int((lam[:6] < 0).sum())} negative rigid eigenvalue(s)')
+            print(f'  chi = {chi2:.4E}   ({"OK" if chi2 <= 1e-4 else "EXCEEDS"} 1e-4, 5.7b)')
+            if (lam_rr < 0).any():
+                print(f'  NOTE: {int((lam_rr < 0).sum())} negative rigid eigenvalue(s) '
+                      '(round-off level if |lam| is tiny)')
         with open(os.path.join(HERE, OUT_PREFIX + '_freefree.csv'), 'w', newline='') as fc:
             w = csv.writer(fc)
             w.writerow(['mode', 'eigenvalue', 'freq_Hz'])
